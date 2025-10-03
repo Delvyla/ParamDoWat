@@ -25,58 +25,56 @@ def get_auto_tags(param_name):
         if any(pattern in lower_name for pattern in patterns):
             tags.append(tag)
     return tags
-
+    
+def extract_dynamic_urls_section(html_content):
+    """Extract only the Dynamic URLs section from Burp Suite HTML"""
+    # Find start: <h2>Dynamic URLs</h2>
+    start_marker = html_content.find('<h2>Dynamic URLs</h2>')
+    if start_marker == -1:
+        # Try case-insensitive
+        start_marker = html_content.lower().find('<h2>dynamic urls</h2>')
+        if start_marker == -1:
+            return html_content  # Return original if not found
+    
+    # Find end: next <h2> tag after Dynamic URLs
+    # Look for <h2> after the start marker
+    end_marker = html_content.find('<h2>', start_marker + 20)
+    
+    if end_marker == -1:
+        # No next section found, take everything after Dynamic URLs
+        extracted = html_content[start_marker:]
+    else:
+        # Extract between Dynamic URLs and next h2
+        extracted = html_content[start_marker:end_marker]
+    
+    # Wrap in minimal HTML structure
+    return f"<html><body>{extracted}</body></html>"
+    
 def parse_burp_html(html_content):
-    """Parse Burp Suite HTML export - only Dynamic URLs section"""
+    """Parse Burp Suite HTML export"""
     soup = BeautifulSoup(html_content, 'html.parser')
     
-    # Find the Dynamic URLs section
-    dynamic_header = None
-    for h2 in soup.find_all('h2'):
-        if 'Dynamic URLs' in h2.get_text():
-            dynamic_header = h2
-            break
-    
-    if not dynamic_header:
-        return []
-    
-    # Find the next h2 (like "Static URLs") to know where to stop
-    next_header = dynamic_header.find_next_sibling('h2')
-    
-    # Get the ul after Dynamic URLs
-    main_ul = dynamic_header.find_next_sibling('ul')
-    
+    main_ul = soup.find('ul')
     if not main_ul:
         return []
     
-    # If there's another h2 after Dynamic URLs, remove everything from that point onwards
-    if next_header:
-        # Remove all siblings after the next h2 (and the h2 itself)
-        for sibling in list(next_header.next_siblings):
-            if hasattr(sibling, 'extract'):
-                sibling.extract()
-        next_header.extract()
-    
     urls = []
+    current_url = None
     
-    # Now parse the cleaned ul
-    for li in main_ul.find_all('li', recursive=False):
-        url_text = li.find(text=True, recursive=False)
-        if url_text:
-            url_text = url_text.strip()
-        
-        if not url_text or not url_text.startswith('http'):
+    for child in main_ul.children:
+        if not hasattr(child, 'name'):
             continue
-        
-        current_url = {
-            'url': url_text,
-            'parameters': []
-        }
-        
-        # Find nested ul with parameters
-        nested_ul = li.find('ul')
-        if nested_ul:
-            for param_li in nested_ul.find_all('li'):
+            
+        if child.name == 'li':
+            url_text = child.get_text(strip=True)
+            if url_text.startswith('http'):
+                current_url = {
+                    'url': url_text,
+                    'parameters': []
+                }
+                urls.append(current_url)
+        elif child.name == 'ul' and current_url:
+            for param_li in child.find_all('li'):
                 param_text = param_li.get_text(strip=True)
                 if param_text and '=' in param_text:
                     key, value = param_text.split('=', 1)
@@ -89,11 +87,8 @@ def parse_burp_html(html_content):
                         'key': param_text.strip(),
                         'value': ''
                     })
-        
-        if current_url['parameters']:
-            urls.append(current_url)
     
-    return urls
+    return [u for u in urls if u['parameters']]
     
 def process_urls(urls):
     """Process URLs into parameter data structure"""
@@ -174,10 +169,13 @@ def upload():
     if file.filename == '':
         return jsonify({'error': 'No file selected'}), 400
     
+
     html_content = file.read().decode('utf-8')
     file_size = len(html_content) / (1024 * 1024)
     
     # Parse HTML
+    # In upload() function, after getting html_content:
+    html_content = extract_dynamic_urls_section(html_content)  # Add this line
     urls = parse_burp_html(html_content)
     
     # Process data
