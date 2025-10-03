@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, jsonify
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, NavigableString
 from collections import defaultdict
 
 app = Flask(__name__)
@@ -28,27 +28,33 @@ def get_auto_tags(param_name):
     
 def extract_dynamic_urls_section(html_content):
     """Extract only the Dynamic URLs section from Burp Suite HTML"""
-    # Find start: <h2>Dynamic URLs</h2>
-    start_marker = html_content.find('<h2>Dynamic URLs</h2>')
-    if start_marker == -1:
-        # Try case-insensitive
-        start_marker = html_content.lower().find('<h2>dynamic urls</h2>')
-        if start_marker == -1:
-            return html_content  # Return original if not found
+    soup = BeautifulSoup(html_content, 'html.parser')
     
-    # Find end: next <h2> tag after Dynamic URLs
-    # Look for <h2> after the start marker
-    end_marker = html_content.find('<h2>', start_marker + 20)
+    # Find the <h2> with text "Dynamic URLs"
+    target_h2 = None
+    for h2 in soup.find_all('h2'):
+        if h2.get_text(strip=True) == 'Dynamic URLs':
+            target_h2 = h2
+            break
     
-    if end_marker == -1:
-        # No next section found, take everything after Dynamic URLs
-        extracted = html_content[start_marker:]
-    else:
-        # Extract between Dynamic URLs and next h2
-        extracted = html_content[start_marker:end_marker]
+    if not target_h2:
+        return html_content  # Return original if not found
+    
+    # Collect all siblings until the next <h2>
+    collected = []
+    for sibling in target_h2.next_siblings:
+        if hasattr(sibling, 'name') and sibling.name == 'h2':
+            break  # Stop at next h2
+        if isinstance(sibling, NavigableString) and not sibling.strip():
+            continue  # Skip empty text nodes
+        collected.append(sibling)
+    
+    # Combine into HTML string
+    extracted_html = ''.join(str(x) for x in collected).strip()
     
     # Wrap in minimal HTML structure
-    return f"<html><body>{extracted}</body></html>"
+    return f"<html><body>{extracted_html}</body></html>"
+
     
 def parse_burp_html(html_content):
     """Parse Burp Suite HTML export"""
@@ -174,7 +180,6 @@ def upload():
     file_size = len(html_content) / (1024 * 1024)
     
     # Parse HTML
-    # In upload() function, after getting html_content:
     html_content = extract_dynamic_urls_section(html_content)  # Add this line
     urls = parse_burp_html(html_content)
     
