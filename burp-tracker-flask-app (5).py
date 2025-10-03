@@ -30,51 +30,64 @@ def parse_burp_html(html_content):
     """Parse Burp Suite HTML export - only Dynamic URLs section"""
     soup = BeautifulSoup(html_content, 'html.parser')
     
-    # Find the Dynamic URLs section
-    dynamic_header = soup.find('h2', string='Dynamic URLs')
-    if not dynamic_header:
-        # Fallback to old parsing if no section found
-        main_ul = soup.find('body')
-        if main_ul:
-            main_ul = main_ul.find('ul')
-    else:
-        # Get the ul element after Dynamic URLs header
-        main_ul = dynamic_header.find_next_sibling('ul')
+    # Find the Dynamic URLs h2 header
+    dynamic_header = None
+    for h2 in soup.find_all('h2'):
+        if 'Dynamic URLs' in h2.get_text():
+            dynamic_header = h2
+            break
     
-    urls = []
+    if not dynamic_header:
+        return []
+    
+    # Get the ul element that comes after the h2
+    main_ul = dynamic_header.find_next_sibling('ul')
     
     if not main_ul:
         return []
     
-    children = list(main_ul.children)
-    current_url = None
+    urls = []
     
-    for child in children:
-        if child.name == 'li':
-            url_text = child.get_text(strip=True)
-            if url_text.startswith('http'):
-                current_url = {
-                    'url': url_text,
-                    'parameters': []
-                }
-                urls.append(current_url)
-        elif child.name == 'ul' and current_url is not None:
-            for param_li in child.find_all('li'):
+    # Process direct children of main_ul
+    for li in main_ul.find_all('li', recursive=False):
+        # Get the URL text (first direct text node)
+        url_text = None
+        for content in li.contents:
+            if isinstance(content, str):
+                url_text = content.strip()
+                break
+        
+        if not url_text or not url_text.startswith('http'):
+            continue
+        
+        current_url = {
+            'url': url_text,
+            'parameters': []
+        }
+        
+        # Find nested ul with parameters
+        nested_ul = li.find('ul')
+        if nested_ul:
+            for param_li in nested_ul.find_all('li', recursive=False):
                 param_text = param_li.get_text(strip=True)
-                if param_text and '=' in param_text:
-                    key, value = param_text.split('=', 1)
-                    current_url['parameters'].append({
-                        'key': key.strip(),
-                        'value': value.strip()
-                    })
-                elif param_text:
-                    current_url['parameters'].append({
-                        'key': param_text.strip(),
-                        'value': ''
-                    })
+                if param_text:
+                    if '=' in param_text:
+                        key, value = param_text.split('=', 1)
+                        current_url['parameters'].append({
+                            'key': key.strip(),
+                            'value': value.strip()
+                        })
+                    else:
+                        current_url['parameters'].append({
+                            'key': param_text.strip(),
+                            'value': ''
+                        })
+        
+        # Only add URLs with parameters
+        if current_url['parameters']:
+            urls.append(current_url)
     
-    # Filter out URLs with no parameters
-    return [u for u in urls if u['parameters']]
+    return urls
 
 def process_urls(urls):
     """Process URLs into parameter data structure"""
