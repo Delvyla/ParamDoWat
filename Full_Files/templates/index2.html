@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Burp Suite Parameter Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="app" class="h-screen flex flex-col bg-gray-100">
+        <!-- Header -->
+        <div class="bg-white border-b border-gray-200 p-4">
+            <div class="flex items-center justify-between mb-3">
+                <div>
+                    <h1 class="text-xl font-bold text-gray-900">Burp Suite Parameter Tracker</h1>
+                    <p class="text-sm text-gray-600">Analyze parameters and find vulnerabilities</p>
+                </div>
+                <label class="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg cursor-pointer hover:bg-blue-700 transition">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                    </svg>
+                    <span>Upload HTML</span>
+                    <input type="file" accept=".html" id="fileInput" class="hidden" onchange="handleFileUpload(event)">
+                </label>
+            </div>
+            
+            <div id="stats" class="hidden flex gap-6 text-sm">
+                <div class="bg-blue-50 px-3 py-2 rounded">
+                    <span id="urlCount" class="text-blue-600 font-semibold">0</span>
+                    <span class="text-blue-800 ml-1">URLs</span>
+                </div>
+                <div class="bg-purple-50 px-3 py-2 rounded">
+                    <span id="paramCount" class="text-purple-600 font-semibold">0</span>
+                    <span class="text-purple-800 ml-1">Parameters</span>
+                </div>
+                <div id="fileSizeDiv" class="bg-gray-50 px-3 py-2 rounded hidden">
+                    <span id="fileSize" class="text-gray-600 font-semibold">0 MB</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div id="emptyState" class="flex-1 flex items-center justify-center">
+            <div class="text-center">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="mx-auto mb-4 text-gray-400">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                </svg>
+                <p class="text-gray-500 mb-2">Upload a Burp Suite HTML export to get started</p>
+            </div>
+        </div>
+
+        <div id="mainContent" class="hidden flex-1 flex overflow-hidden">
+            <!-- Left Sidebar - Parameter List -->
+            <div class="w-80 bg-white border-r border-gray-200 flex flex-col">
+                <div class="p-3 border-b border-gray-200">
+                    <div class="relative">
+                        <svg width="18" height="18" class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                        </svg>
+                        <input
+                            type="text"
+                            id="searchInput"
+                            placeholder="Search parameters..."
+                            class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            oninput="filterParameters()"
+                        />
+                    </div>
+                </div>
+                
+                <div id="paramList" class="flex-1 overflow-y-auto"></div>
+            </div>
+
+            <!-- Right Content Area - Parameter Details -->
+            <div class="flex-1 overflow-y-auto bg-gray-50">
+                <div id="paramDetails" class="p-6"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tag Modal -->
+    <div id="tagModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-900">Manage Tags</h3>
+                    <p id="tagModalParam" class="text-sm text-gray-600 font-mono mt-1"></p>
+                </div>
+                <button onclick="closeTagModal()" class="text-gray-400 hover:text-gray-600">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="mb-4">
+                <div class="flex gap-2">
+                    <input
+                        type="text"
+                        id="newTagInput"
+                        placeholder="Enter tag (e.g., XSS, SQLi, Auth)"
+                        class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        onkeypress="if(event.key==='Enter') addTag()"
+                    />
+                    <button onclick="addTag()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <div id="tagList" class="space-y-2"></div>
+        </div>
+    </div>
+
+    <!-- Relationships Modal -->
+    <div id="relationModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6 max-h-[80vh] overflow-y-auto">
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-900">Parameter Relationships</h3>
+                    <p id="relationModalParam" class="text-sm text-gray-600 font-mono mt-1"></p>
+                </div>
+                <button onclick="closeRelationModal()" class="text-gray-400 hover:text-gray-600">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+
+            <div id="relationContent"></div>
+
+            <div class="mt-6 p-4 bg-blue-50 rounded-lg">
+                <p class="text-sm text-blue-900 font-semibold mb-2">💡 Pentesting Tip:</p>
+                <p class="text-sm text-blue-800">
+                    Parameters that frequently appear together might share the same validation logic. 
+                    If you find a vulnerability in one, test the related parameters too!
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let appData = {
+            processed: null,
+            selectedParam: null,
+            manualTags: {}
+        };
+
+        const AUTO_TAG_PATTERNS = {
+            'File Upload': ['file', 'upload', 'document', 'doc', 'attachment', 'image', 'photo', 'pdf'],
+            'IDOR': ['id', 'user', 'account', 'profile', 'uid', 'userid', 'accountid'],
+            'XSS': ['search', 'query', 'q', 'keyword', 'message', 'comment', 'text', 'content'],
+            'SQLi': ['id', 'sort', 'order', 'filter', 'category', 'type'],
+            'Auth': ['token', 'session', 'auth', 'key', 'api', 'secret', 'password', 'login'],
+            'Redirect': ['redirect', 'url', 'return', 'next', 'callback', 'continue', 'returnurl'],
+            'Path Traversal': ['path', 'dir', 'folder', 'directory', 'file', 'filename'],
+            'Admin': ['admin', 'role', 'privilege', 'permission', 'access', 'level'],
+            'Debug': ['debug', 'test', 'dev', 'trace', 'verbose', 'log']
+        };
+
+        function getAutoTags(paramName) {
+            const tags = [];
+            const lowerName = paramName.toLowerCase();
+            for (const [tag, patterns] of Object.entries(AUTO_TAG_PATTERNS)) {
+                if (patterns.some(pattern => lowerName.includes(pattern))) {
+                    tags.push(tag);
+                }
+            }
+            return tags;
+        }
+
+        async function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    appData.processed = result.data;
+                    
+                    // Update UI
+                    document.getElementById('urlCount').textContent = result.data.total_urls;
+                    document.getElementById('paramCount').textContent = result.data.total_params;
+                    document.getElementById('fileSize').textContent = result.file_size + ' MB';
+                    document.getElementById('fileSizeDiv').classList.remove('hidden');
+                    document.getElementById('stats').classList.remove('hidden');
+                    document.getElementById('emptyState').classList.add('hidden');
+                    document.getElementById('mainContent').classList.remove('hidden');
+                    
+                    // Select first parameter
+                    if (result.data.all_param_names.length > 0) {
+                        appData.selectedParam = result.data.all_param_names[0];
+                    }
+                    
+                    renderParameterList();
+                    renderParameterDetails();
+                }
+            } catch (error) {
+                alert('Error uploading file: ' + error.message);
+            }
+        }
+
+        function renderParameterList() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const paramList = document.getElementById('paramList');
+            paramList.innerHTML = '';
+
+            const filtered = appData.processed.all_param_names.filter(p => 
+                p.toLowerCase().includes(searchTerm)
+            );
+
+            filtered.forEach(param => {
+                const paramData = appData.processed.params[param];
+                const autoTags = getAutoTags(param);
+                const manualTags = appData.manualTags[param] || [];
+                const isSelected = appData.selectedParam === param;
+
+                const div = document.createElement('div');
+                div.className = `p-3 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition ${
+                    isSelected ? 'bg-blue-50 border-l-4 border-l-blue-600' : ''
+                }`;
+                div.onclick = () => selectParameter(param);
+
+                let tagsHTML = '';
+                autoTags.slice(0, 2).forEach(tag => {
+                    tagsHTML += `<span class="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded mr-1">${tag}</span>`;
+                });
+                manualTags.slice(0, 1).forEach(tag => {
+                    tagsHTML += `<span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded mr-1">${tag}</span>`;
+                });
+
+                if (autoTags.length + manualTags.length > 3) {
+                    tagsHTML += `<span class="text-xs text-gray-400">+${autoTags.length + manualTags.length - 3}</span>`;
+                }
+
+                div.innerHTML = `
+                    <div class="flex items-start justify-between mb-1">
+                        <span class="font-mono text-sm font-semibold text-gray-900 break-all">${param}</span>
+                        <span class="text-xs text-gray-500 ml-2 flex-shrink-0">${paramData.total_occurrences}×</span>
+                    </div>
+                    ${tagsHTML ? `<div class="flex flex-wrap gap-1 mt-1">${tagsHTML}</div>` : ''}
+                `;
+
+                paramList.appendChild(div);
+            });
+        }
+
+        function selectParameter(param) {
+            appData.selectedParam = param;
+            renderParameterList();
+            renderParameterDetails();
+        }
+
+        function renderParameterDetails() {
+            if (!appData.selectedParam) return;
+
+            const param = appData.selectedParam;
+            const paramData = appData.processed.params[param];
+            const autoTags = getAutoTags(param);
+            const manualTags = appData.manualTags[param] || [];
+
+            let autoTagsHTML = autoTags.map(tag => 
+                `<span class="text-sm bg-orange-100 text-orange-700 px-3 py-1 rounded-full">🤖 ${tag}</span>`
+            ).join('');
+
+            let manualTagsHTML = manualTags.map(tag => 
+                `<span class="text-sm bg-blue-100 text-blue-700 px-3 py-1 rounded-full">${tag}</span>`
+            ).join('');
+
+            let valuesHTML = '';
+            for (const [value, urls] of Object.entries(paramData.values)) {
+                const urlsHTML = urls.map(url => 
+                    `<div class="group flex items-start gap-2 p-2 rounded hover:bg-gray-50 transition">
+                        <svg width="14" height="14" class="text-blue-600 mt-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/>
+                        </svg>
+                        <a href="${url}" target="_blank" class="text-sm font-mono text-blue-600 hover:text-blue-800 break-all">${url}</a>
+                    </div>`
+                ).join('');
+
+                valuesHTML += `
+                    <div class="bg-white rounded-lg shadow-sm p-4 mb-4">
+                        <div class="flex items-center gap-2 mb-3 pb-2 border-b border-gray-200">
+                            <span class="text-sm font-medium text-gray-600">Value:</span>
+                            <span class="text-sm font-mono font-semibold bg-gray-100 px-3 py-1 rounded">${value}</span>
+                            <span class="text-xs text-gray-500">(${urls.length} URL${urls.length !== 1 ? 's' : ''})</span>
+                        </div>
+                        <div class="space-y-2">${urlsHTML}</div>
+                    </div>
+                `;
+            }
+
+            document.getElementById('paramDetails').innerHTML = `
+                <div class="bg-white rounded-lg shadow-sm p-6 mb-4">
+                    <div class="flex items-start justify-between mb-4">
+                        <div class="flex-1">
+                            <h2 class="text-2xl font-mono font-bold text-purple-600 mb-2">${param}</h2>
+                            <div class="flex gap-2 mb-3">
+                                <span class="text-sm bg-gray-100 text-gray-600 px-3 py-1 rounded-full">${paramData.total_occurrences} occurrences</span>
+                                <span class="text-sm bg-purple-100 text-purple-600 px-3 py-1 rounded-full">${Object.keys(paramData.values).length} unique values</span>
+                            </div>
+                            <div class="flex flex-wrap gap-2 mb-3">
+                                ${autoTagsHTML}
+                                ${manualTagsHTML}
+                            </div>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="openTagModal('${param}')" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+                                    <line x1="7" y1="7" x2="7.01" y2="7"/>
+                                </svg>
+                                <span>Tags</span>
+                            </button>
+                            <button onclick="openRelationModal('${param}')" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center gap-2">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                                </svg>
+                                <span>Relationships</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                ${valuesHTML}
+            `;
+        }
+
+        function filterParameters() {
+            renderParameterList();
+        }
+
+        function openTagModal(param) {
+            document.getElementById('tagModalParam').textContent = param;
+            document.getElementById('tagModal').classList.remove('hidden');
+            renderTagList(param);
+        }
+
+        function closeTagModal() {
+            document.getElementById('tagModal').classList.add('hidden');
+            document.getElementById('newTagInput').value = '';
+        }
+
+        function renderTagList(param) {
+            const tags = appData.manualTags[param] || [];
+            const tagList = document.getElementById('tagList');
+            
+            if (tags.length === 0) {
+                tagList.innerHTML = '<p class="text-sm text-gray-400 text-center py-4">No manual tags yet</p>';
+            } else {
+                tagList.innerHTML = tags.map(tag => `
+                    <div class="flex items-center justify-between bg-gray-50 px-3 py-2 rounded-lg">
+                        <span class="text-sm text-gray-700">${tag}</span>
+                        <button onclick="removeTag('${param}', '${tag}')" class="text-red-500 hover:text-red-700 transition">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                            </svg>
+                        </button>
+                    </div>
+                `).join('');
+            }
+        }
+
+        function addTag() {
+            const param = document.getElementById('tagModalParam').textContent;
+            const newTag = document.getElementById('newTagInput').value.trim();
+            
+            if (!newTag) return;
+            
+            if (!appData.manualTags[param]) {
+                appData.manualTags[param] = [];
+            }
+            
+            if (!appData.manualTags[param].includes(newTag)) {
+                appData.manualTags[param].push(newTag);
+            }
+            
+            document.getElementById('newTagInput').value = '';
+            renderTagList(param);
+            renderParameterList();
+            renderParameterDetails();
+        }
+
+        function removeTag(param, tag) {
+            appData.manualTags[param] = appData.manualTags[param].filter(t => t !== tag);
+            renderTagList(param);
+            renderParameterList();
+            renderParameterDetails();
+        }
+
+        async function openRelationModal(param) {
+            document.getElementById('relationModalParam').textContent = param;
+            document.getElementById('relationModal').classList.remove('hidden');
+            document.getElementById('relationContent').innerHTML = '<p class="text-center text-gray-500">Loading...</p>';
+            
+            try {
+                const response = await fetch(`/api/relationships/${encodeURIComponent(param)}`);
+                const result = await response.json();
+                
+                if (result.relationships.length === 0) {
+                    document.getElementById('relationContent').innerHTML = 
+                        '<p class="text-sm text-gray-400 text-center py-8">This parameter doesn\'t appear with any other parameters</p>';
+                } else {
+                    const html = result.relationships.map(rel => {
+                        const autoTagsHTML = rel.auto_tags.map(tag => 
+                            `<span class="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded">🤖 ${tag}</span>`
+                        ).join('');
+                        
+                        return `
+                            <div class="flex items-center justify-between bg-gray-50 px-4 py-3 rounded-lg border border-gray-200 mb-2">
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-sm font-mono font-semibold text-gray-900">${rel.param}</span>
+                                        ${autoTagsHTML ? `<div class="flex gap-1">${autoTagsHTML}</div>` : ''}
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <span class="text-sm text-gray-600">
+                                        Appears together <span class="font-semibold text-purple-600">${rel.count}</span> time${rel.count !== 1 ? 's' : ''}
+                                    </span>
+                                    <button onclick="selectParameterFromModal('${rel.param}')" class="text-xs bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 transition">
+                                        View
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                    
+                    document.getElementById('relationContent').innerHTML = `
+                        <p class="text-sm text-gray-600 mb-3">
+                            Parameters that appear together with <span class="font-mono font-semibold">${param}</span>:
+                        </p>
+                        ${html}
+                    `;
+                }
+            } catch (error) {
+                document.getElementById('relationContent').innerHTML = 
+                    '<p class="text-red-500 text-center">Error loading relationships</p>';
+            }
+        }
+
+        function closeRelationModal() {
+            document.getElementById('relationModal').classList.add('hidden');
+        }
+
+        function selectParameterFromModal(param) {
+            closeRelationModal();
+            selectParameter(param);
+        }
+    </script>
+</body>
+</html>
