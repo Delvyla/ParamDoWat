@@ -30,7 +30,7 @@ def parse_burp_html(html_content):
     """Parse Burp Suite HTML export - only Dynamic URLs section"""
     soup = BeautifulSoup(html_content, 'html.parser')
     
-    # Find the Dynamic URLs h2 header
+    # Find the Dynamic URLs section
     dynamic_header = None
     for h2 in soup.find_all('h2'):
         if 'Dynamic URLs' in h2.get_text():
@@ -40,22 +40,30 @@ def parse_burp_html(html_content):
     if not dynamic_header:
         return []
     
-    # Get the ul element that comes after the h2
+    # Find the next h2 (like "Static URLs") to know where to stop
+    next_header = dynamic_header.find_next_sibling('h2')
+    
+    # Get the ul after Dynamic URLs
     main_ul = dynamic_header.find_next_sibling('ul')
     
     if not main_ul:
         return []
     
+    # If there's another h2 after Dynamic URLs, remove everything from that point onwards
+    if next_header:
+        # Remove all siblings after the next h2 (and the h2 itself)
+        for sibling in list(next_header.next_siblings):
+            if hasattr(sibling, 'extract'):
+                sibling.extract()
+        next_header.extract()
+    
     urls = []
     
-    # Process direct children of main_ul
+    # Now parse the cleaned ul
     for li in main_ul.find_all('li', recursive=False):
-        # Get the URL text (first direct text node)
-        url_text = None
-        for content in li.contents:
-            if isinstance(content, str):
-                url_text = content.strip()
-                break
+        url_text = li.find(text=True, recursive=False)
+        if url_text:
+            url_text = url_text.strip()
         
         if not url_text or not url_text.startswith('http'):
             continue
@@ -68,27 +76,25 @@ def parse_burp_html(html_content):
         # Find nested ul with parameters
         nested_ul = li.find('ul')
         if nested_ul:
-            for param_li in nested_ul.find_all('li', recursive=False):
+            for param_li in nested_ul.find_all('li'):
                 param_text = param_li.get_text(strip=True)
-                if param_text:
-                    if '=' in param_text:
-                        key, value = param_text.split('=', 1)
-                        current_url['parameters'].append({
-                            'key': key.strip(),
-                            'value': value.strip()
-                        })
-                    else:
-                        current_url['parameters'].append({
-                            'key': param_text.strip(),
-                            'value': ''
-                        })
+                if param_text and '=' in param_text:
+                    key, value = param_text.split('=', 1)
+                    current_url['parameters'].append({
+                        'key': key.strip(),
+                        'value': value.strip()
+                    })
+                elif param_text:
+                    current_url['parameters'].append({
+                        'key': param_text.strip(),
+                        'value': ''
+                    })
         
-        # Only add URLs with parameters
         if current_url['parameters']:
             urls.append(current_url)
     
     return urls
-
+    
 def process_urls(urls):
     """Process URLs into parameter data structure"""
     param_data = {}
