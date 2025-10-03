@@ -155,38 +155,47 @@ def upload():
     if file.filename == '':
         return jsonify({'error': 'No file selected'}), 400
     
+    # Read file as bytes first
+    file_bytes = file.read()
+    
     # Try multiple encodings to handle different file formats
     html_content = None
-    encodings = ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1']
+    encodings = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252', 'iso-8859-1', 'windows-1252']
+    last_error = None
     
     for encoding in encodings:
         try:
-            html_content = file.read().decode(encoding)
-            break
-        except UnicodeDecodeError:
-            file.seek(0)  # Reset file pointer for next attempt
+            html_content = file_bytes.decode(encoding, errors='ignore')
+            # Verify it's valid by checking for basic HTML structure
+            if '<html' in html_content.lower() or '<body' in html_content.lower():
+                break
+        except Exception as e:
+            last_error = str(e)
             continue
     
-    if html_content is None:
-        return jsonify({'error': 'Could not decode file. Try saving it with UTF-8 encoding.'}), 400
+    if html_content is None or len(html_content) == 0:
+        return jsonify({'error': f'Could not decode file: {last_error}'}), 400
     
     file_size = len(html_content) / (1024 * 1024)
     
-    # Parse HTML
-    urls = parse_burp_html(html_content)
-    
-    # Process data
-    processed = process_urls(urls)
-    
-    # Store in memory
-    app_data['urls'] = urls
-    app_data['processed'] = processed
-    
-    return jsonify({
-        'success': True,
-        'file_size': round(file_size, 2),
-        'data': processed
-    })
+    try:
+        # Parse HTML
+        urls = parse_burp_html(html_content)
+        
+        # Process data
+        processed = process_urls(urls)
+        
+        # Store in memory
+        app_data['urls'] = urls
+        app_data['processed'] = processed
+        
+        return jsonify({
+            'success': True,
+            'file_size': round(file_size, 2),
+            'data': processed
+        })
+    except Exception as e:
+        return jsonify({'error': f'Error parsing HTML: {str(e)}'}), 500
 
 @app.route('/api/parameter/<param_name>')
 def get_parameter_details(param_name):
