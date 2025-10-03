@@ -27,12 +27,21 @@ def get_auto_tags(param_name):
     return tags
 
 def parse_burp_html(html_content):
-    """Parse Burp Suite HTML export"""
+    """Parse Burp Suite HTML export - only Dynamic URLs section"""
     soup = BeautifulSoup(html_content, 'html.parser')
+    
+    # Find the Dynamic URLs section
+    dynamic_header = soup.find('h2', string='Dynamic URLs')
+    if not dynamic_header:
+        # Fallback to old parsing if no section found
+        main_ul = soup.find('body')
+        if main_ul:
+            main_ul = main_ul.find('ul')
+    else:
+        # Get the ul element after Dynamic URLs header
+        main_ul = dynamic_header.find_next_sibling('ul')
+    
     urls = []
-    main_ul = soup.find('body')
-    if main_ul:
-        main_ul = main_ul.find('ul')
     
     if not main_ul:
         return []
