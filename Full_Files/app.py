@@ -155,7 +155,21 @@ def upload():
     if file.filename == '':
         return jsonify({'error': 'No file selected'}), 400
     
-    html_content = file.read().decode('utf-8')
+    # Try multiple encodings to handle different file formats
+    html_content = None
+    encodings = ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1']
+    
+    for encoding in encodings:
+        try:
+            html_content = file.read().decode(encoding)
+            break
+        except UnicodeDecodeError:
+            file.seek(0)  # Reset file pointer for next attempt
+            continue
+    
+    if html_content is None:
+        return jsonify({'error': 'Could not decode file. Try saving it with UTF-8 encoding.'}), 400
+    
     file_size = len(html_content) / (1024 * 1024)
     
     # Parse HTML
