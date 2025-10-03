@@ -84,15 +84,15 @@
                         class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
                     >
                         <option value="">All Tags</option>
-                        <option value="File Upload">🤖 File Upload</option>
-                        <option value="IDOR">🤖 IDOR</option>
-                        <option value="XSS">🤖 XSS</option>
-                        <option value="SQLi">🤖 SQLi</option>
-                        <option value="Auth">🤖 Auth</option>
-                        <option value="Redirect">🤖 Redirect</option>
-                        <option value="Path Traversal">🤖 Path Traversal</option>
-                        <option value="Admin">🤖 Admin</option>
-                        <option value="Debug">🤖 Debug</option>
+                        <option value="File Upload">?? File Upload</option>
+                        <option value="IDOR">?? IDOR</option>
+                        <option value="XSS">?? XSS</option>
+                        <option value="SQLi">?? SQLi</option>
+                        <option value="Auth">?? Auth</option>
+                        <option value="Redirect">?? Redirect</option>
+                        <option value="Path Traversal">?? Path Traversal</option>
+                        <option value="Admin">?? Admin</option>
+                        <option value="Debug">?? Debug</option>
                     </select>
                 </div>
                 
@@ -160,7 +160,7 @@
             <div id="relationContent"></div>
 
             <div class="mt-6 p-4 bg-blue-50 rounded-lg">
-                <p class="text-sm text-blue-900 font-semibold mb-2">💡 Pentesting Tip:</p>
+                <p class="text-sm text-blue-900 font-semibold mb-2">? Pentesting Tip:</p>
                 <p class="text-sm text-blue-800">
                     Parameters that frequently appear together might share the same validation logic. 
                     If you find a vulnerability in one, test the related parameters too!
@@ -173,11 +173,31 @@
         let appData = {
             processed: null,
             selectedParam: null,
-            manualTags: {},
+            manualTags: loadFromStorage('manualTags') || {},
             urlsCache: {},
-            testedParams: {},
-            hideTested: false
+            testedParams: loadFromStorage('testedParams') || {},
+            hideTested: loadFromStorage('hideTested') || false
         };
+
+        // Load data from localStorage
+        function loadFromStorage(key) {
+            try {
+                const data = localStorage.getItem(`burpTracker_${key}`);
+                return data ? JSON.parse(data) : null;
+            } catch (e) {
+                console.error('Error loading from storage:', e);
+                return null;
+            }
+        }
+
+        // Save data to localStorage
+        function saveToStorage(key, value) {
+            try {
+                localStorage.setItem(`burpTracker_${key}`, JSON.stringify(value));
+            } catch (e) {
+                console.error('Error saving to storage:', e);
+            }
+        }
 
         const AUTO_TAG_PATTERNS = {
             'File Upload': ['file', 'upload', 'document', 'doc', 'attachment', 'image', 'photo', 'pdf'],
@@ -234,6 +254,16 @@
                         appData.selectedParam = result.data.all_param_names[0];
                     }
                     
+                    // Restore hide tested state
+                    if (appData.hideTested) {
+                        const btn = document.getElementById('hideTestedBtn');
+                        const indicator = document.getElementById('hideTestedIndicator');
+                        btn.classList.add('bg-blue-50', 'border-blue-500');
+                        indicator.textContent = 'ON';
+                        indicator.classList.remove('text-gray-400');
+                        indicator.classList.add('text-blue-600', 'font-semibold');
+                    }
+                    
                     renderParameterList();
                     renderParameterDetails();
                 }
@@ -282,7 +312,7 @@
                 
                 // Add tested badge if parameter is tested
                 if (isTested) {
-                    tagsHTML += `<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded mr-1">✓ Tested</span>`;
+                    tagsHTML += `<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded mr-1">??Tested</span>`;
                 }
                 
                 autoTags.slice(0, 2).forEach(tag => {
@@ -299,7 +329,7 @@
                 div.innerHTML = `
                     <div class="flex items-start justify-between mb-1">
                         <span class="font-mono text-sm font-semibold text-gray-900 break-all">${param}</span>
-                        <span class="text-xs text-gray-500 ml-2 flex-shrink-0">${paramData.total_occurrences}×</span>
+                        <span class="text-xs text-gray-500 ml-2 flex-shrink-0">${paramData.total_occurrences}?</span>
                     </div>
                     ${tagsHTML ? `<div class="flex flex-wrap gap-1 mt-1">${tagsHTML}</div>` : ''}
                 `;
@@ -324,7 +354,7 @@
             const isTested = appData.testedParams[param] === true;
 
             let autoTagsHTML = autoTags.map(tag => 
-                `<span class="text-sm bg-orange-100 text-orange-700 px-3 py-1 rounded-full">🤖 ${tag}</span>`
+                `<span class="text-sm bg-orange-100 text-orange-700 px-3 py-1 rounded-full">?? ${tag}</span>`
             ).join('');
 
             let manualTagsHTML = manualTags.map(tag => 
@@ -472,6 +502,7 @@
             
             if (!appData.manualTags[param].includes(newTag)) {
                 appData.manualTags[param].push(newTag);
+                saveToStorage('manualTags', appData.manualTags);
             }
             
             document.getElementById('newTagInput').value = '';
@@ -482,6 +513,7 @@
 
         function removeTag(param, tag) {
             appData.manualTags[param] = appData.manualTags[param].filter(t => t !== tag);
+            saveToStorage('manualTags', appData.manualTags);
             renderTagList(param);
             renderParameterList();
             renderParameterDetails();
@@ -502,7 +534,7 @@
                 } else {
                     const html = result.relationships.map(rel => {
                         const autoTagsHTML = rel.auto_tags.map(tag => 
-                            `<span class="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded">🤖 ${tag}</span>`
+                            `<span class="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded">?? ${tag}</span>`
                         ).join('');
                         
                         return `
@@ -549,6 +581,8 @@
 
         function toggleHideTested() {
             appData.hideTested = !appData.hideTested;
+            saveToStorage('hideTested', appData.hideTested);
+            
             const btn = document.getElementById('hideTestedBtn');
             const indicator = document.getElementById('hideTestedIndicator');
             
@@ -569,6 +603,7 @@
 
         function toggleTested(param) {
             appData.testedParams[param] = !appData.testedParams[param];
+            saveToStorage('testedParams', appData.testedParams);
             renderParameterList();
             renderParameterDetails();
         }
