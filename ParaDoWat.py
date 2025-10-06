@@ -115,8 +115,8 @@ def process_urls(urls):
         # Priority 3: Has non-empty values (0 = has values, 1 = only empty)
         # Priority 4: Alphabetical
         return (
-            -num_tags if num_tags > 0 else 0,  # Attack tags first (more tags = higher priority)
-            -occurrences,                       # More occurrences = higher priority
+            -occurrences,       # More occurrences = higher priority
+            -num_tags,  # Attack tags first (more tags = higher priority)                
             0 if has_values else 1,             # Has values before empty-only
             param_name                          # Alphabetical as tiebreaker
         )
